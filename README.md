@@ -43,9 +43,9 @@ dvc commit -df synthetic_data
 This assigns the example dataset as the output of the synthetic data generation stage, allowing downstream stages in the pipeline to run with `dvc repro`.
 
 ### Run pipeline end-to-end
-1) **synthetic_data**: `python -m synthetic_data.generate --params params.yaml`  
+1) **synthetic_data**: `python -m synthetic_data.generate --params params.synthetic_data`  
    - Produces `synthetic_data/data/jittered_titles.csv` and `synthetic_data/metrics/jitter_summary.json`.
-2) **fine_tuning**: `python -m fine_tuning.train --params params.yaml`  
+2) **fine_tuning**: `python -m fine_tuning.train --params params.fine_tuning`  
    - Uses jittered titles, writes train/val/test splits, trained model, metrics, and t-SNE plot.
 3) **publish_model**: copies the best checkpoint to `streamlit_app/data/fine_tuned_model`.
 4) **prepare_embeddings**: `python streamlit_app/prepare_embeddings.py`  

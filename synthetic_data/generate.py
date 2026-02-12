@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple, Optional
@@ -40,14 +41,45 @@ SYSTEM_PROMPT = (
 )
 
 
-def load_params(params_path: Path) -> Dict:
+def _parse_params_selector(selector: str) -> Tuple[Path, str]:
+    """
+    Parse a YAML selector in either form:
+    - "params.synthetic_data" -> params.yaml + section synthetic_data
+    - "path/to/file.yaml:synthetic_data" -> explicit path + section
+    """
+    selector = selector.strip()
+    if ":" in selector:
+        raw_path, section = selector.split(":", 1)
+        path = Path(raw_path)
+    else:
+        if "." not in selector:
+            raise ValueError(
+                f"Invalid --params '{selector}'. Expected '<file>.<section>' (e.g. 'params.synthetic_data')."
+            )
+        raw_path, section = selector.rsplit(".", 1)
+        path = Path(raw_path)
+
+    if path.suffix not in {".yaml", ".yml"}:
+        path = path.with_suffix(".yaml")
+    if not section:
+        raise ValueError(f"Invalid --params '{selector}'. Section cannot be empty.")
+    return path, section
+
+
+def load_params(params_selector: str) -> Dict:
+    params_path, section = _parse_params_selector(params_selector)
     if not params_path.exists():
         return DEFAULT_PARAMS.copy()
     import yaml
 
     params = yaml.safe_load(params_path.read_text()) or {}
-    sd_params = params.get("synthetic_data", {})
-    merged = DEFAULT_PARAMS | sd_params
+    section_params = params.get(section)
+    if section_params is None:
+        raise ValueError(f"Section '{section}' not found in {params_path}")
+    if not isinstance(section_params, dict):
+        raise ValueError(f"Section '{section}' in {params_path} must be a mapping/object")
+
+    merged = DEFAULT_PARAMS | section_params
     return merged
 
 
@@ -315,38 +347,18 @@ def write_outputs(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate synthetic job titles via LLMs.")
-    parser.add_argument("--params", type=Path, default=Path("params.yaml"), help="Path to params.yaml")
-    parser.add_argument("--model", type=str, help="Override model name (e.g., gpt-5-mini)")
-    parser.add_argument("--num", type=int, help="Override examples per seed title")
-    parser.add_argument("--seed", type=int, help="Random seed")
-    parser.add_argument("--temperature", type=float, help="Sampling temperature; omit for reasoning models")
-    parser.add_argument("--reasoning-effort", type=str, help="Reasoning level (minimal/low/medium/high)")
-    parser.add_argument("--max-concurrent", type=int, help="Maximum concurrent requests")
-    parser.add_argument("--api-key-env", type=str, help="Override API key env var name")
-    parser.add_argument("--base-url-env", type=str, help="Optional API base URL env var name (e.g., Azure)")
-    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt about LLM call volume")
+    parser.add_argument(
+        "--params",
+        type=str,
+        default="params.synthetic_data",
+        help="YAML selector '<file>.<section>' or '<file.yaml>:<section>' (e.g., params.synthetic_data)",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     params = load_params(args.params)
-    if args.model:
-        params["model"] = args.model
-    if args.num:
-        params["num_examples_per_title"] = args.num
-    if args.seed:
-        params["seed"] = args.seed
-    if args.temperature is not None:
-        params["temperature"] = args.temperature
-    if args.reasoning_effort:
-        params["reasoning_effort"] = args.reasoning_effort
-    if args.max_concurrent:
-        params["max_concurrent"] = args.max_concurrent
-    if args.api_key_env:
-        params["api_key_env"] = args.api_key_env
-    if args.base_url_env:
-        params["base_url_env"] = args.base_url_env
 
     model_info = resolve_model(params["model"])
 
@@ -357,7 +369,7 @@ def main():
     seed_df = load_seed_titles(Path("synthetic_data/data/seed_titles.csv"))
     pending_calls = sum(1 for title in seed_df["seed_title"] if title not in cached)
 
-    if not args.yes:
+    if sys.stdin.isatty():
         prompt = (
             f"You are about to make {pending_calls} LLM calls with model '{model_info.model}' "
             f"({len(seed_df)} seeds; {len(cached)} cached). Proceed? [y/N] "
