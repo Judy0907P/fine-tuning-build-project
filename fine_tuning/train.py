@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
+import os
 
 import numpy as np
 import pandas as pd
@@ -46,15 +47,45 @@ DEFAULT_PARAMS = {
     "plot_path": "fine_tuning/plots/embedding_tsne.png",
 }
 
+def _parse_params_selector(selector: str) -> Tuple[Path, str]:
+    """
+    Parse a YAML selector in either form:
+    - "params.fine_tuning" -> params.yaml + section fine_tuning
+    - "path/to/file.yaml:fine_tuning" -> explicit path + section
+    """
+    selector = selector.strip()
+    if ":" in selector:
+        raw_path, section = selector.split(":", 1)
+        path = Path(raw_path)
+    else:
+        if "." not in selector:
+            raise ValueError(
+                f"Invalid --params '{selector}'. Expected '<file>.<section>' (e.g. 'params.fine_tuning')."
+            )
+        raw_path, section = selector.rsplit(".", 1)
+        path = Path(raw_path)
 
-def load_params(path: Path) -> Dict:
+    if path.suffix not in {".yaml", ".yml"}:
+        path = path.with_suffix(".yaml")
+    if not section:
+        raise ValueError(f"Invalid --params '{selector}'. Section cannot be empty.")
+    return path, section
+
+
+def load_params(params_selector: str) -> Dict:
+    path, section = _parse_params_selector(params_selector)
     if not path.exists():
         return DEFAULT_PARAMS.copy()
     import yaml
 
     params = yaml.safe_load(path.read_text()) or {}
-    ft = params.get("fine_tuning", {})
-    return DEFAULT_PARAMS | ft
+    section_params = params.get(section)
+    if section_params is None:
+        raise ValueError(f"Section '{section}' not found in {path}")
+    if not isinstance(section_params, dict):
+        raise ValueError(f"Section '{section}' in {path} must be a mapping/object")
+
+    return DEFAULT_PARAMS | section_params
 
 
 def stratified_split(df: pd.DataFrame, val_frac: float, test_frac: float, seed: int):
@@ -343,8 +374,9 @@ def train(params: Dict):
         save_steps=eval_steps,
         save_total_limit=2,
         logging_steps=eval_steps,
-        report_to="tensorboard",
         dataloader_pin_memory=torch.cuda.is_available(),
+        metric_for_best_model="eval_loss",
+        load_best_model_at_end=True,
     )
 
     trainer = SentenceTransformerTrainer(
@@ -399,16 +431,18 @@ def train(params: Dict):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train fine-tuned embeddings on jittered titles.")
-    parser.add_argument("--params", type=Path, default=Path("params.yaml"))
-    parser.add_argument("--jitter-path", type=Path, help="Override jittered_titles.csv path")
+    parser.add_argument(
+        "--params",
+        type=str,
+        default="params.fine_tuning",
+        help="YAML selector '<file>.<section>' or '<file.yaml>:<section>' (e.g., params.fine_tuning)",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     params = load_params(args.params)
-    if args.jitter_path:
-        params["jitter_path"] = str(args.jitter_path)
     metrics = train(params)
     print(json.dumps(metrics, indent=2))
 

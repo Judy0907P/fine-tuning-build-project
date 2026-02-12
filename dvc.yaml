@@ -1,6 +1,6 @@
 stages:
   synthetic_data:
-    cmd: python -m synthetic_data.generate --params params.yaml
+    cmd: python -m synthetic_data.generate --params params.synthetic_data
     params:
       - synthetic_data
     deps:
@@ -14,7 +14,7 @@ stages:
       - synthetic_data/metrics/jitter_summary.json
 
   fine_tuning:
-    cmd: python -m fine_tuning.train --params params.yaml
+    cmd: python -m fine_tuning.train --params params.fine_tuning
     params:
       - fine_tuning
     deps:

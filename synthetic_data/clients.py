@@ -79,13 +79,30 @@ def resolve_model(name: str) -> ModelInfo:
     )
 
 
-def build_client(model_info: ModelInfo, api_key_env: Optional[str] = None, async_mode: bool = False):
-    """Return the correct SDK client for the given model."""
-    env_var = api_key_env or ("OPENAI_API_KEY" if model_info.provider == "openai" else "GEMINI_API_KEY")
-    api_key = os.getenv(env_var)
-
+def build_client(
+    model_info: ModelInfo,
+    api_key_env: Optional[str] = None,
+    base_url_env: Optional[str] = None,
+    async_mode: bool = False,
+):
+    """Return the correct SDK client for the given model/provider."""
     if model_info.provider == "openai":
-        return AsyncOpenAI(api_key=api_key) if async_mode else OpenAI(api_key=api_key)
+        env_var = api_key_env or "OPENAI_API_KEY"
+        api_key = os.getenv(env_var)
+
+        base_url = os.getenv(base_url_env) if base_url_env else None
+        # Convenience for Azure OpenAI: if caller uses the Azure key env and
+        # doesn't pass base_url_env explicitly, pick up the standard endpoint env.
+        if not base_url and env_var == "AZURE_PROJECT_API_KEY":
+            base_url = os.getenv("AZURE_OPENAI_ENDPOINT")
+
+        kwargs = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        return AsyncOpenAI(**kwargs) if async_mode else OpenAI(**kwargs)
+
+    env_var = api_key_env or "GEMINI_API_KEY"
+    api_key = os.getenv(env_var)
 
     # google-genai client covers Gemini + Gemma
     return genai.Client(api_key=api_key)

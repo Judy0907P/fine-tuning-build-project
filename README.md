@@ -27,6 +27,7 @@ To setup DVC, run `dvc init`. If you'd like to set up remote (or pseudo-remote i
 Environment:
 - `OPENAI_API_KEY` for OpenAI models.
 - `GEMINI_API_KEY` for Gemini/Gemma via Google GenAI.
+- Azure OpenAI-compatible routing (optional): set `api_key_env: AZURE_PROJECT_API_KEY` and `base_url_env: AZURE_OPENAI_ENDPOINT` in `params.yaml`.
 - Authentication via Google Vertex AI (`gcloud auth login`) + environment variables for `GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT` & `GOOGLE_CLOUD_LOCATION`
 
 ## Pipelines (DVC)
@@ -42,9 +43,9 @@ dvc commit -df synthetic_data
 This assigns the example dataset as the output of the synthetic data generation stage, allowing downstream stages in the pipeline to run with `dvc repro`.
 
 ### Run pipeline end-to-end
-1) **synthetic_data**: `python -m synthetic_data.generate --params params.yaml`  
+1) **synthetic_data**: `python -m synthetic_data.generate --params params.synthetic_data`  
    - Produces `synthetic_data/data/jittered_titles.csv` and `synthetic_data/metrics/jitter_summary.json`.
-2) **fine_tuning**: `python -m fine_tuning.train --params params.yaml`  
+2) **fine_tuning**: `python -m fine_tuning.train --params params.fine_tuning`  
    - Uses jittered titles, writes train/val/test splits, trained model, metrics, and t-SNE plot.
 3) **publish_model**: copies the best checkpoint to `streamlit_app/data/fine_tuned_model`.
 4) **prepare_embeddings**: `python streamlit_app/prepare_embeddings.py`  
@@ -65,6 +66,6 @@ dvc repro fine_tuning
 Once the pipeline has been run (i.e. model trained, moved into `streamlit_app` folder and embeddings generated), you can spin up the web app locally by running `streamlit run streamlit_app/app.py` from inside the `streamlit_app` folder.
 
 ## Key Scripts
-- `synthetic_data/generate.py`: async LLM generation with JSON outputs, supports OpenAI & Gemini/Gemma. Configurable via `params.yaml`.
+- `synthetic_data/generate.py`: async LLM generation with JSON outputs, supports OpenAI (including Azure-compatible base URL) and Gemini/Gemma. Configurable via `params.yaml`.
 - `fine_tuning/train.py`: dynamic-negative triplet training (cosine margin), metrics JSON, t-SNE plot.
 - `streamlit_app/prepare_embeddings.py`: builds baseline and fine-tuned embeddings for the app.
