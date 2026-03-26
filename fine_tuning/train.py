@@ -19,6 +19,7 @@ from sentence_transformers import (
 )
 from sentence_transformers.data_collator import SentenceTransformerDataCollator
 import matplotlib
+from transformers.integrations import TensorBoardCallback
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -389,6 +390,7 @@ def train(params: Dict):
             SentenceTransformerDataCollator(tokenize_fn=base_model.tokenize),
             order=("anchor", "positive", "negative"),
         ),
+        callbacks=[TensorBoardCallback()],
     )
 
     trainer.train()

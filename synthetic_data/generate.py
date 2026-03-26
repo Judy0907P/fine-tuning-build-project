@@ -322,6 +322,7 @@ async def run_pipeline(params: Dict, seed_df: pd.DataFrame) -> Tuple[pd.DataFram
 
     tasks = [process_row(row) for _, row in seed_df.iterrows()]
     records: List[TitleVariants] = []
+    # for coro in asyncio.as_completed(tasks):
     for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Generating"):
         records.append(await coro)
 
